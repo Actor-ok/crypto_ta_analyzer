@@ -1,0 +1,8 @@
+pandas>=2.0
+numpy
+ta>=0.11.0          # 替换 pandas_ta，用这个
+mplfinance
+matplotlib
+ccxt
+pyyaml
+scipy

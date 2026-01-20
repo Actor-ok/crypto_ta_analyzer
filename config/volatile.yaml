@@ -1,0 +1,13 @@
+<<: *default  # 继承 default（YAML锚点语法，如果你的编辑器支持）
+
+candlestick:
+  long_shadow_ratio: 1.5          # 高波动下影线比例放宽至1.5倍（文档加密注意）
+  small_body_ratio: 0.4           # 小实体放宽
+  doji_ratio: 0.1                 # 十字星更常见，放宽到10%
+  
+chart_patterns:
+  peak_trough_tolerance: 0.08     # 高度差放宽到8%（加密波动大）
+
+confirmation:
+  require_volume: false          # 高波动时量有时不可靠，放松
+  require_rsi_no_extreme: false

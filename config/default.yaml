@@ -1,0 +1,84 @@
+# 默认配置：严格遵循《日本蜡烛图技术》和 Murphy 框架
+# 所有阈值均来自文档量化条件，加密货币注意点在其他配置文件中调整
+
+candlestick:
+  # 基础元素判断标准
+  long_shadow_ratio: 2.0          # 长影线 ≥ 实体 × 2
+  small_body_ratio: 0.3           # 小实体：实体 < 价格区间(at_range)的 30%
+  doji_ratio: 0.05                # 十字星：|open-close| ≤ 价格区间 5%
+  very_small_body_ratio: 0.1      # 极小实体（用于晨星/昏星中间K线）
+  
+  # 单根K线额外容忍
+  hammer_upper_shadow_ratio: 0.1  # 锤头/上吊 上影线要短（≤实体*0.1）
+  shooting_star_lower_shadow_ratio: 0.1  # 流星/倒锤头 下影线要短
+  
+  # 组合形态确认
+  engulfing_strict: true         # 吞没必须完全包住（可改为false允许部分包住）
+  piercing_ratio: 0.5            # 刺穿/乌云 深入前实体 ≥50%
+  confirm_with_volume: true      # 反转形态是否要求放量确认
+  confirm_with_next_candle: false  # 是否要求第3根延续
+
+chart_patterns:
+  peak_trough_tolerance: 0.05    # 双顶/双底 两峰/谷高度差 ≤5%
+  head_shoulder_volume_decline: true  # 右肩成交量衰竭要求
+  triangle_convergence_rate: 0.8  # 三角形收敛判断（暂留，实际用斜率）
+  breakout_volume_multiplier: 1.5  # 突破放量 ≥1.5倍均量
+  retest_confirmation: true      # 突破后是否要求回踩确认
+
+indicators:
+  rsi:
+    period: 14
+    overbought: 70
+    oversold: 30
+    divergence_lookback: 20       # 背离检测回看周期
+  
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  
+  ema:
+    short: 10
+    medium: 20
+    long: 50
+    very_long: 200
+  
+  bollinger:
+    period: 20
+    std_dev: 2
+  
+  stochastic:
+    period: 14
+    smooth_k: 3
+    smooth_d: 3
+    overbought: 80
+    oversold: 20
+
+volume:
+  obv_confirmation: true         # 量价同向要求
+  breakout_volume_period: 20     # 放量均量计算周期
+
+fibonacci:
+  levels: [0.236, 0.382, 0.5, 0.618, 0.786, 1.0]
+  swing_lookback: 50             # 寻找摆动高低点回看周期
+
+confirmation:
+  require_volume: true
+  require_rsi_no_extreme: true   # 反转信号时RSI不能极值（避免假信号）
+  min_confirmations: 2           # 多重确认至少需要几个条件
+
+risk:
+  max_risk_per_trade: 0.02       # 单笔最大风险 2%
+  stop_loss_atr_multiplier: 2.0  # 止损距离（ATR倍数，后续实现）
+
+chart_patterns:
+  peak_trough_tolerance: 0.05
+  extrema_order: 5  # 1m用30-50
+
+fibonacci:
+  levels: [0.236, 0.382, 0.5, 0.618, 0.786]
+  swing_lookback: 100
+
+# chart_patterns:
+#   extrema_order: 10  # 1m数据推荐10-20（小=更多形态检测，更敏感）
+#   peak_trough_tolerance: 0.05  # 已有的保持
