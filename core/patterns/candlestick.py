@@ -195,5 +195,70 @@ def detect_candlestick_patterns(df: pd.DataFrame, config: dict) -> pd.DataFrame:
         (df['close'] < prev4['close'])
     )
     df['falling_three_methods'] = falling_three.astype(int)
+
+        # === 新增：持续形态检测（前置阈值提取，防止NameError）===
+    small_body_ratio = config['candlestick'].get('small_body_ratio', 0.3)          # 已存在于原代码，重复提取无害
+    cfg_gap = config['candlestick'].get('gap_ratio', 0.001)  # 新配置：最小跳空比例（加密默认0.1%）
+    cfg_same_size = config['candlestick'].get('similar_body_ratio', 0.8)  # 新：相似实体比例
+
+    # 向上跳空两只乌鸦（熊市持续：阳线跳空后两只小阴线覆盖）
+    prev2 = df.shift(2)
+    prev1 = df.shift(1)
+    upside_gap_two_crows = (
+        prev2['is_bullish'] & (prev2['body'] > prev2['range'] * small_body_ratio) &  # 第一根强阳
+        (prev1['open'] > prev2['high'] * (1 + cfg_gap)) &  # 向上跳空
+        prev1['is_bearish'] & 
+        df['is_bearish'] &
+        (prev1['open'] > df['open']) &  # 第二阴高于第三阴开盘
+        (df['close'] < prev1['close']) &  # 第三阴收更低
+        (df['high'] < prev1['open'])  # 第三阴完全在第二阴实体内
+    )
+    df['upside_gap_two_crows'] = upside_gap_two_crows.astype(int)
+
+    # 向上跳空分手线（多头延续：阳-阴跳空后下一根阳线不回填）
+    tasuki_upside = (
+        prev1['is_bullish'] &
+        df['is_bearish'] &
+        (df['open'] > prev1['high'] * (1 + cfg_gap)) &  # 向上跳空
+        (df['close'] > prev1['open'])  # 阴线不回填阳线开盘
+    )
+    df['tasuki_upside_gap'] = tasuki_upside.astype(int)
+
+    # 向下跳空分手线（空头延续）
+    tasuki_downside = (
+        prev1['is_bearish'] &
+        df['is_bullish'] &
+        (df['open'] < prev1['low'] * (1 - cfg_gap)) &
+        (df['close'] < prev1['open'])
+    )
+    df['tasuki_downside_gap'] = tasuki_downside.astype(int)
+
+    # 侧向白三兵（多头延续：两根并列阳线，实体相似、开盘价接近前收盘）
+    side_by_side_white = (
+        prev1['is_bullish'] &
+        df['is_bullish'] &
+        (abs(prev1['open'] - prev1['close'].shift(1)) < prev1['body'] * 0.1) &  # 开在前期实体内
+        (abs(df['open'] - df['close'].shift(1)) < df['body'] * 0.1) &
+        (abs(prev1['body'] - df['body']) / ((prev1['body'] + df['body']) / 2) < (1 - cfg_same_size))  # 实体大小相似
+    )
+    df['side_by_side_white_lines'] = side_by_side_white.astype(int)
+
+    # 上升分离线（多头强势延续：阴后大阳，开盘≈前收盘）
+    separating_up = (
+        prev1['is_bearish'] &
+        df['is_bullish'] &
+        (abs(df['open'] - prev1['close']) < df['body'] * 0.1) &  # 开盘几乎等于前收盘
+        (df['body'] > prev1['body'] * cfg_same_size)
+    )
+    df['separating_lines_up'] = separating_up.astype(int)
+
+    # 下降分离线（空头强势延续）
+    separating_down = (
+        prev1['is_bullish'] &
+        df['is_bearish'] &
+        (abs(df['open'] - prev1['close']) < df['body'] * 0.1) &
+        (df['body'] > prev1['body'] * cfg_same_size)
+    )
+    df['separating_lines_down'] = separating_down.astype(int)
     
     return df

@@ -3,137 +3,181 @@ import numpy as np
 
 def generate_signals(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     """
-    生成交易信号：1=买入, -1=卖出, 0=持仓
-    当前已整合：
-    - 蜡烛反转形态（含哈拉米/十字哈拉米）
-    - 双顶/双底确认（强信号）
-    - 头肩顶/底确认（强信号）
-    - RSI/MACD 背离（强信号）
-    - 支撑/阻力强度加强（靠近高强度支撑/阻力时增强信号）
+    生成交易信号：1=买入, -1=卖出, 0=无信号/持仓
+    当前逻辑以多头为主（现货），空头信号可后续扩展
+    已整合：
+    - 蜡烛反转形态
+    - 蜡烛持续形态
+    - 图表形态确认（双顶/双底、头肩）
+    - 背离（RSI/MACD/OBV）
+    - 跳空形态（新增：突破/持续跳空作为强趋势确认）
+    - 趋势过滤 + 放量确认
     """
     df = df.copy()
-    df['signal'] = 0
-    
+    df['signal'] = 0  # 初始化信号列
+
     c = config['confirmation']
     i = config['indicators']
-    
-    # 趋势过滤（价格 > 200EMA 为多头，加密经典）
+
+    # === 1. 趋势过滤：经典多头环境（收盘价 > EMA200）===
     in_uptrend = df['close'] > df['ema_very_long']
-    
-    # 放量（>20期均量1.5倍，文档放量确认）
+
+    # === 2. 放量确认（> 20期均量 1.5倍，经典突破要求）===
     vol_ma20 = df['volume'].rolling(20).mean()
     volume_spike = df['volume'] > vol_ma20 * 1.5
-    
-    # RSI超卖/超买
-    rsi_oversold = df['rsi'] < i['rsi']['oversold']
-    rsi_overbought = df['rsi'] > i['rsi']['overbought']
-    
-    # MACD 金叉/死叉（hist穿越0轴）
-    macd_bull = (df['macd_hist'] > 0) & (df['macd_hist'].shift(1) <= 0)
-    macd_bear = (df['macd_hist'] < 0) & (df['macd_hist'].shift(1) >= 0)
-    
-    # 看涨蜡烛形态组（含哈拉米）
-    bullish_pattern = df[[
-        'hammer', 'inverted_hammer', 'bullish_engulfing', 'morning_star', 
-        'three_white_soldiers', 'piercing', 'dragonfly_doji',
-        'bullish_harami', 'bullish_harami_cross'
-    ]].max(axis=1) == 1
-    
-    # 看跌蜡烛形态组（含哈拉米）
-    bearish_pattern = df[[
-        'shooting_star', 'bearish_engulfing', 'evening_star', 
-        'three_black_crows', 'dark_cloud_cover', 'gravestone_doji',
-        'bearish_harami', 'bearish_harami_cross'
-    ]].max(axis=1) == 1
-    
-    # 图表形态强信号（双顶/双底 + 头肩确认）——安全访问
-    double_bottom_conf = df.get('double_bottom_confirmed', pd.Series(0, index=df.index))
-    hs_bottom_conf = df.get('hs_bottom_confirmed', pd.Series(0, index=df.index))
-    strong_bullish_pattern = (double_bottom_conf | hs_bottom_conf).astype(int)
-    
-    double_top_conf = df.get('double_top_confirmed', pd.Series(0, index=df.index))
-    hs_top_conf = df.get('hs_top_confirmed', pd.Series(0, index=df.index))
-    strong_bearish_pattern = (double_top_conf | hs_top_conf).astype(int)
-    
-    # 背离强信号（RSI 或 MACD）
-    rsi_bull_div = df.get('rsi_bullish_div', pd.Series(0, index=df.index))
-    macd_bull_div = df.get('macd_bullish_div', pd.Series(0, index=df.index))
-    bullish_div = (rsi_bull_div | macd_bull_div).astype(int)
-    
-    rsi_bear_div = df.get('rsi_bearish_div', pd.Series(0, index=df.index))
-    macd_bear_div = df.get('macd_bearish_div', pd.Series(0, index=df.index))
-    bearish_div = (rsi_bear_div | macd_bear_div).astype(int)
-    
-    # === 新增：支撑/阻力强度加强 ===
-    # 靠近高强度支撑（任意支撑强度≥3，且价格在1%内）
-    strong_support_near = (
-        ((df['close'] - df.get('support_1', pd.Series(np.nan, index=df.index))).abs() / df['close'] < 0.01) &
-        (df.get('support_1_strength', pd.Series(0, index=df.index)) >= 3) |
-        ((df['close'] - df.get('support_2', pd.Series(np.nan, index=df.index))).abs() / df['close'] < 0.01) &
-        (df.get('support_2_strength', pd.Series(0, index=df.index)) >= 3) |
-        ((df['close'] - df.get('support_3', pd.Series(np.nan, index=df.index))).abs() / df['close'] < 0.01) &
-        (df.get('support_3_strength', pd.Series(0, index=df.index)) >= 3)
+
+    # === 3. RSI 不过度极端（避免超买区追高）===
+    rsi_not_extreme = (df['rsi'] < i['rsi']['overbought']) & (df['rsi'] > i['rsi']['oversold'])
+
+    # === 4. 基础反转形态（多头）===
+    bullish_reversal = (
+        (df['hammer'] == 1) |
+        (df['bullish_engulfing'] == 1) |
+        (df['morning_star'] == 1) |
+        (df['three_white_soldiers'] == 1) |
+        (df['piercing'] == 1) |
+        (df['dragonfly_doji'] == 1) |
+        (df['doji'] == 1)
+    ).astype(bool)
+
+    # === 5. 基础反转形态（空头）===
+    bearish_reversal = (
+        (df['shooting_star'] == 1) |
+        (df['bearish_engulfing'] == 1) |
+        (df['evening_star'] == 1) |
+        (df['three_black_crows'] == 1) |
+        (df['dark_cloud_cover'] == 1) |
+        (df['gravestone_doji'] == 1)
+    ).astype(bool)
+
+    # === 6. 持续形态（趋势延续）===
+    bullish_continuation = (
+        (df['tasuki_upside_gap'] == 1) |
+        (df['side_by_side_white_lines'] == 1) |
+        (df['separating_lines_up'] == 1) |
+        (df['rising_three_methods'] == 1)
+    ).astype(bool)
+
+    bearish_continuation = (
+        (df['upside_gap_two_crows'] == 1) |
+        (df['tasuki_downside_gap'] == 1) |
+        (df['separating_lines_down'] == 1) |
+        (df['falling_three_methods'] == 1)
+    ).astype(bool)
+
+    # === 7. 图表形态确认（强信号）===
+    chart_bullish_confirm = (
+        (df['double_bottom_confirmed'] == 1) |
+        (df['hs_bottom_confirmed'] == 1)
+    ).astype(bool)
+
+    chart_bearish_confirm = (
+        (df['double_top_confirmed'] == 1) |
+        (df['hs_top_confirmed'] == 1)
+    ).astype(bool)
+
+    # === 8. 背离信号（强反转确认）===
+    rsi_bull_div = df.get('rsi_bullish_div', pd.Series(0, index=df.index)).astype(bool)
+    rsi_bear_div = df.get('rsi_bearish_div', pd.Series(0, index=df.index)).astype(bool)
+    macd_bull_div = df.get('macd_bullish_div', pd.Series(0, index=df.index)).astype(bool)
+    macd_bear_div = df.get('macd_bearish_div', pd.Series(0, index=df.index)).astype(bool)
+    obv_bull_div = df.get('obv_bullish_div', pd.Series(0, index=df.index)).astype(bool)
+    obv_bear_div = df.get('obv_bearish_div', pd.Series(0, index=df.index)).astype(bool)
+
+    bullish_divergence = (rsi_bull_div | macd_bull_div | obv_bull_div)
+    bearish_divergence = (rsi_bear_div | macd_bear_div | obv_bear_div)
+
+    # === 9. 新增：跳空信号（强趋势确认）===
+    # 安全获取 gap_type（防止未调用 gaps.py 时出错）
+    gap_type = df.get('gap_type', pd.Series('none', index=df.index))
+
+    breakout_continuation_bull = gap_type.str.contains('breakaway_up|continuation_up')
+    exhaustion_bull = gap_type.str.contains('exhaustion_up')  # 可选：作为潜在反转警告
+
+    breakout_continuation_bear = gap_type.str.contains('breakaway_down|continuation_down')
+
+    # === 10. 生成多头信号（多重确认）===
+    long_signal = (
+        in_uptrend &
+        rsi_not_extreme &
+        volume_spike &
+        (
+            bullish_reversal |
+            chart_bullish_confirm |
+            bullish_divergence |
+            bullish_continuation |
+            breakout_continuation_bull  # 新增：跳空突破/持续作为强确认
+        )
     )
-    
-    # 靠近高强度阻力（对称）
-    strong_resistance_near = (
-        ((df['close'] - df.get('resistance_1', pd.Series(np.nan, index=df.index))).abs() / df['close'] < 0.01) &
-        (df.get('resistance_1_strength', pd.Series(0, index=df.index)) >= 3) |
-        ((df['close'] - df.get('resistance_2', pd.Series(np.nan, index=df.index))).abs() / df['close'] < 0.01) &
-        (df.get('resistance_2_strength', pd.Series(0, index=df.index)) >= 3) |
-        ((df['close'] - df.get('resistance_3', pd.Series(np.nan, index=df.index))).abs() / df['close'] < 0.01) &
-        (df.get('resistance_3_strength', pd.Series(0, index=df.index)) >= 3)
+
+    # === 11. 生成空头信号（保守）===
+    short_signal = (
+        ~in_uptrend &
+        rsi_not_extreme &
+        volume_spike &
+        (
+            bearish_reversal |
+            chart_bearish_confirm |
+            bearish_divergence |
+            bearish_continuation |
+            breakout_continuation_bear
+        )
     )
-    
-    # 买入信号：标准多重确认 OR 强形态/背离 OR 形态+强支撑
-    buy = (
-        (bullish_pattern & rsi_oversold & (volume_spike | macd_bull) & in_uptrend) |
-        (strong_bullish_pattern == 1) & in_uptrend |
-        (bullish_pattern & (bullish_div == 1)) |
-        (bullish_pattern & strong_support_near)  # 新增：形态+强支撑直接加强
-    )
-    
-    # 卖出信号（对称）
-    sell = (
-        (bearish_pattern & rsi_overbought & (volume_spike | macd_bear) & (~in_uptrend)) |
-        (strong_bearish_pattern == 1) & (~in_uptrend) |
-        (bearish_pattern & (bearish_div == 1)) |
-        (bearish_pattern & strong_resistance_near)  # 新增：形态+强阻力直接加强
-    )
-    
-    df.loc[buy, 'signal'] = 1
-    df.loc[sell, 'signal'] = -1
 
-        # 持续形态组
-    continuation_bull = df.get('rising_three_methods', pd.Series(0, index=df.index)) == 1
-    continuation_bear = df.get('falling_three_methods', pd.Series(0, index=df.index)) == 1
-    
-    # 买入加强：趋势中持续形态加仓
-    buy = buy | (continuation_bull & in_uptrend)
-    
-    # 卖出加强
-    sell = sell | (continuation_bear & (~in_uptrend))
+    # === 12. 赋值信号（多头优先）===
+    df.loc[long_signal, 'signal'] = 1
+    df.loc[short_signal & ~long_signal, 'signal'] = -1
 
-        # 背离强信号（扩展OBV）
-    obv_bull_div = df.get('obv_bullish_div', pd.Series(0, index=df.index))
-    obv_bear_div = df.get('obv_bearish_div', pd.Series(0, index=df.index))
-    
-    bullish_div = (rsi_bull_div | macd_bull_div | obv_bull_div).astype(int)
-    bearish_div = (rsi_bear_div | macd_bear_div | obv_bear_div).astype(int)
+        # 新增三角/旗形确认
+    triangle_bull = (df['ascending_triangle'] == 1) | (df['symmetrical_triangle'] == 1)
+    triangle_bear = (df['descending_triangle'] == 1)
+
+    flag_bull = (df['bull_flag'] == 1) | (df['wedge_up'] == 1)
+    flag_bear = (df['bear_flag'] == 1) | (df['wedge_down'] == 1)
+
+    # 加到信号
+    long_signal = long_signal | (in_uptrend & (triangle_bull | flag_bull) & volume_spike)
+
+        # 新增矩形突破确认
+    rectangle_bull = (df['rectangle_break_up'] == 1)
+    rectangle_bear = (df['rectangle_break_down'] == 1)
+
+    long_signal = long_signal | (in_uptrend & rectangle_bull)
+    short_signal = short_signal | (~in_uptrend & rectangle_bear)
+
+    wave_3 = df['wave_label'] == '3'  # 第3浪强买
+    long_signal = long_signal | (in_uptrend & wave_3)
 
 
-        # 背离强信号（扩展OBV量价背离）
-    obv_bull_div = df.get('obv_bullish_div', pd.Series(0, index=df.index))
-    obv_bear_div = df.get('obv_bearish_div', pd.Series(0, index=df.index))
-    
-    bullish_div = (rsi_bull_div | macd_bull_div | obv_bull_div).astype(int)
-    bearish_div = (rsi_bear_div | macd_bear_div | obv_bear_div).astype(int)
+        # 新增：趋势线/通道突破确认
+    trend_break_bull = df.get('trendline_break_up', pd.Series(False, index=df.index))
+    trend_break_bear = df.get('trendline_break_down', pd.Series(False, index=df.index))
 
-        # 扩展OBV背离
-    obv_bull_div = df.get('obv_bullish_div', pd.Series(0, index=df.index))
-    obv_bear_div = df.get('obv_bearish_div', pd.Series(0, index=df.index))
-    
-    bullish_div = (rsi_bull_div | macd_bull_div | obv_bull_div).astype(int)
-    bearish_div = (rsi_bear_div | macd_bear_div | obv_bear_div).astype(int)
-    
+    long_signal = long_signal | (in_uptrend & trend_break_bull & volume_spike)
+    short_signal = short_signal | (~in_uptrend & trend_break_bear & volume_spike)
+
+
+        # 新增量价加强
+    cmf_positive = df.get('cmf', pd.Series(0, index=df.index)) > 0
+    volume_osc_positive = df.get('volume_osc', pd.Series(0, index=df.index)) > 0
+
+    # 多头加强（资金流入 + 量增）
+    long_signal = long_signal | (in_uptrend & cmf_positive & volume_osc_positive)
+
+        # 新增量价确认
+    cmf_positive = df.get('cmf', pd.Series(0, index=df.index)) > 0
+    volume_osc_positive = df.get('volume_osc', pd.Series(0, index=df.index)) > 0
+    close_above_vwap = df['close'] > df.get('vwap', df['close'])
+
+    # 多头加强（资金流入 + 量增 + 价上均线）
+    long_signal = long_signal | (in_uptrend & cmf_positive & volume_osc_positive & close_above_vwap)
+
+
+        # 新增波浪确认
+    wave_3 = df['wave_label'] == 'wave_3'
+    wave_confirmed = df['wave_confirmed'] == 1
+
+    long_signal = long_signal | (in_uptrend & wave_3 & wave_confirmed)
+
+
     return df

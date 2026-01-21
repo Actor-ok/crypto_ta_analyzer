@@ -11,17 +11,18 @@ df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'v
 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 df.set_index('timestamp', inplace=True)
 
-# 2. 加载配置（试试 default 或 volatile）
+# 2. 加载配置
 config = load_config('default.yaml')
 
-# 3. 增强DataFrame（指标 + 形态）
-df_enhanced = enhance_dataframe(df, config)
+# === 新增：选择策略周期 ===
+strategy_timeframe = '1h'  # <-- 修改这里：'1h' 日内，'4h'/'1d' 波段，None 原始周期
+
+# 3. 增强DataFrame
+df_enhanced = enhance_dataframe(df, config, resample_to=strategy_timeframe)
 
 # 4. 打印最近20根的关键信息
-print("最近20根K线（带指标+形态）：")
 print(df_enhanced.tail(20)[[
-    'close', 'volume', 'rsi', 'macd_hist',
-    'ema_short', 'bb_upper', 'bb_lower',
+    'close', 'ema_short', 'ema_medium', 'rsi', 'macd', 'signal',
     'doji', 'hammer', 'bullish_engulfing', 'three_black_crows'
 ]])
 
@@ -34,9 +35,9 @@ print(df_enhanced[morph_columns].sum().sort_values(ascending=False))
 print("\n最近交易信号：")
 print(df_enhanced[df_enhanced['signal'] != 0].tail(10)[['close', 'signal', 'rsi', 'three_black_crows', 'hammer']])
 
-# 6. 可视化（最近100根，带标注）
+# 6. 可视化（最近100根）
 plot_kline_with_signals(df_enhanced, title="BTC/USDT 技术分析（带信号标注）", num_candles=100)
 
-# 7. 保存完整数据（方便Excel查看）
+# 7. 保存完整数据
 df_enhanced.to_csv('btc_enhanced_full.csv')
 print("\n数据已保存到 btc_enhanced_full.csv")

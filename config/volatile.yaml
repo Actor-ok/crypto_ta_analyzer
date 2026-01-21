@@ -4,6 +4,8 @@ candlestick:
   long_shadow_ratio: 1.5          # 高波动下影线比例放宽至1.5倍（文档加密注意）
   small_body_ratio: 0.4           # 小实体放宽
   doji_ratio: 0.1                 # 十字星更常见，放宽到10%
+  gap_ratio: 0.001                  # 最小跳空比例（1分钟数据建议0.001，较高周期可调大到0.005）
+  similar_body_ratio: 0.8           # 实体相似度（>80%算相似）
   
 chart_patterns:
   # peak_trough_tolerance: 0.08     # 高度差放宽到8%（加密波动大）
@@ -16,3 +18,9 @@ chart_patterns:
 confirmation:
   require_volume: false          # 高波动时量有时不可靠，放松
   require_rsi_no_extreme: false
+
+gaps:
+  enabled: true
+  min_gap_pct: 0.001         # 4h/1d 用0.005，1m 可调小到0.001
+  volume_multiplier: 1.2
+  trend_period: 50

@@ -160,5 +160,88 @@ def detect_chart_patterns(df: pd.DataFrame, config: dict) -> pd.DataFrame:
                 first_break = np.where(confirmed)[0][0] + neck_end
                 if first_break < len(df):
                     df.loc[df.index[first_break]:, 'hs_bottom_confirmed'] = 1
+
+            # === 新增：三角形检测 ===
+    # 对称三角形（上下趋势线收敛）
+    df['symmetrical_triangle'] = 0
+    df['ascending_triangle'] = 0
+    df['descending_triangle'] = 0
+
+    # 简化实现：用最近转折点判断收敛
+    high_idx = argrelextrema(df['high'].values, np.greater_equal, order=order)[0]
+    low_idx = argrelextrema(df['low'].values, np.less_equal, order=order)[0]
+
+    if len(high_idx) >= 3 and len(low_idx) >= 3:
+        # 上趋势线斜率（下降）
+        upper_slope = (df['high'].iloc[high_idx[-1]] - df['high'].iloc[high_idx[-3]]) / (high_idx[-1] - high_idx[-3])
+        # 下趋势线斜率（上升）
+        lower_slope = (df['low'].iloc[low_idx[-1]] - df['low'].iloc[low_idx[-3]]) / (low_idx[-1] - low_idx[-3])
+
+        convergence = upper_slope < 0 and lower_slope > 0  # 收敛
+        flat_upper = abs(upper_slope) < tolerance * 0.1  # 上升三角（上平）
+        flat_lower = abs(lower_slope) < tolerance * 0.1  # 下降三角（下平）
+
+        if convergence:
+            if flat_upper:
+                df.loc[df.index[-1]:, 'ascending_triangle'] = 1
+            elif flat_lower:
+                df.loc[df.index[-1]:, 'descending_triangle'] = 1
+            else:
+                df.loc[df.index[-1]:, 'symmetrical_triangle'] = 1
+
+    # === 新增：旗形/楔形（短期通道 + 放量突破）===
+    df['bull_flag'] = 0
+    df['bear_flag'] = 0
+    df['wedge_up'] = 0
+    df['wedge_down'] = 0
+
+    # 简单通道检测（唐奇安或rolling）
+    channel_period = cfg.get('channel_period', 20)
+    upper_channel = df['high'].rolling(channel_period).max()
+    lower_channel = df['low'].rolling(channel_period).min()
+    channel_width = (upper_channel - lower_channel) / df['close']
+
+    narrow_channel = channel_width < channel_width.rolling(50).mean() * 0.8  # 通道收窄
+
+    if narrow_channel.iloc[-1] and volume_spike.iloc[-1]:
+        if in_uptrend.iloc[-1]:
+            df.loc[df.index[-1]:, 'bull_flag'] = 1
+        else:
+            df.loc[df.index[-1]:, 'bear_flag'] = 1
+
+    # 楔形（收敛 + 方向）
+    if convergence and upper_slope < 0 and lower_slope < 0:
+        df.loc[df.index[-1]:, 'wedge_down'] = 1  # 下降楔
+    elif convergence and upper_slope > 0 and lower_slope > 0:
+        df.loc[df.index[-1]:, 'wedge_up'] = 1
+
+        # === 新增：矩形通道（水平支撑阻力整理 + 突破）===
+    df['rectangle'] = 0
+    df['rectangle_break_up'] = 0
+    df['rectangle_break_down'] = 0
+
+    # 水平通道检测（价格在支撑阻力间震荡）
+    support = df['low'].rolling(50).min()
+    resistance = df['high'].rolling(50).max()
+    range_pct = (resistance - support) / df['close']
+
+    # 窄通道（震荡）
+    narrow_range = range_pct < range_pct.rolling(100).mean() * 0.7
+
+    # 多次触碰（简化：价格靠近支撑/阻力次数）
+    near_support = df['low'] <= support * 1.01
+    near_resistance = df['high'] >= resistance * 0.99
+    touches = (near_support | near_resistance).rolling(50).sum() > 6  # >6次触碰
+
+    rectangle_mask = narrow_range & touches
+
+    if rectangle_mask.iloc[-1]:
+        df.loc[df.index[-1]:, 'rectangle'] = 1
+
+        # 突破判断
+        if df['close'].iloc[-1] > resistance.iloc[-1] and volume_spike.iloc[-1]:
+            df.loc[df.index[-1]:, 'rectangle_break_up'] = 1
+        elif df['close'].iloc[-1] < support.iloc[-1] and volume_spike.iloc[-1]:
+            df.loc[df.index[-1]:, 'rectangle_break_down'] = 1
     
     return df

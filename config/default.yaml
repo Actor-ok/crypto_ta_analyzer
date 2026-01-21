@@ -22,12 +22,16 @@ candlestick:
   confirm_with_volume: true      # 反转形态是否要求放量确认
   confirm_with_next_candle: false  # 是否要求第3根延续
 
+  gap_ratio: 0.001                  # 最小跳空比例（1分钟数据建议0.001，较高周期可调大到0.005）
+  similar_body_ratio: 0.8           # 实体相似度（>80%算相似）
+
 chart_patterns:
   peak_trough_tolerance: 0.05    # 双顶/双底 两峰/谷高度差 ≤5%
   head_shoulder_volume_decline: true  # 右肩成交量衰竭要求
   triangle_convergence_rate: 0.8  # 三角形收敛判断（暂留，实际用斜率）
   breakout_volume_multiplier: 1.5  # 突破放量 ≥1.5倍均量
   retest_confirmation: true      # 突破后是否要求回踩确认
+  channel_period: 20
 
 indicators:
   rsi:
@@ -73,6 +77,12 @@ indicators:
     price_tolerance: 0.01  # 价格新高/低容忍1%
     obv_tolerance: 0.02    # OBV背离容忍2%
 
+  cmf:
+    period: 20
+  volume_osc:
+    short: 5
+    long: 10
+
 volume:
   obv_confirmation: true         # 量价同向要求
   breakout_volume_period: 20     # 放量均量计算周期
@@ -103,7 +113,28 @@ chart_patterns:
   volume_multiplier: 1.5
   min_pattern_bars: 30          # 头肩跨度更大
   shoulder_tolerance: 0.10      # 新：肩部高度容忍10%
+  triangle:
+    extrema_order: 20  # 从30放宽到20（更多转折点）
+    min_touches: 2     # 从3降到2（更容易触发）
+    channel_period: 15   # 旗形通道短点
+  rectangle_lookback: 50
+  rectangle_touches: 6
 
 support_resistance:
   touch_tolerance_pct: 0.005     # 0.5% 价格容忍算触碰
   min_touches_for_strong: 3      # ≥3次算强（可选，后续信号用）
+
+gaps:
+  enabled: true
+  min_gap_pct: 0.001         # 4h/1d 用0.005，1m 可调小到0.001
+  volume_multiplier: 1.2
+  trend_period: 50
+
+elliott:
+  enabled: true
+  order: 15
+
+trendlines:
+  enabled: true
+  extrema_order: 15          # 激进放宽
+  channel_period: 20
