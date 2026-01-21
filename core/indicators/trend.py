@@ -1,5 +1,6 @@
 from ta.trend import EMAIndicator, SMAIndicator, MACD  # <--- 添加 MACD 这里
 from ta.volatility import BollingerBands
+from ta.volatility import AverageTrueRange
 import pandas as pd
 
 def add_moving_averages(df: pd.DataFrame, config: dict) -> pd.DataFrame:
@@ -23,5 +24,18 @@ def add_moving_averages(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     df['macd'] = macd.macd()
     df['macd_signal'] = macd.macd_signal()
     df['macd_hist'] = macd.macd_diff()
+
+    # === 新增 ATR ===
+    atr_cfg = config['indicators'].get('atr', {'period': 14})  # 默认14期
+    atr_period = atr_cfg.get('period', 14)
+    df['atr'] = AverageTrueRange(
+        high=df['high'],
+        low=df['low'],
+        close=df['close'],
+        window=atr_period
+    ).average_true_range()
+    
+    # 可选：ATR百分比（用于固定百分比止损备用）
+    df['atr_pct'] = df['atr'] / df['close']
     
     return df

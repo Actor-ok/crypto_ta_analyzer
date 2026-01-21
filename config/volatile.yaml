@@ -6,7 +6,12 @@ candlestick:
   doji_ratio: 0.1                 # 十字星更常见，放宽到10%
   
 chart_patterns:
-  peak_trough_tolerance: 0.08     # 高度差放宽到8%（加密波动大）
+  # peak_trough_tolerance: 0.08     # 高度差放宽到8%（加密波动大）
+  extrema_order: 30          # 已有
+  peak_trough_tolerance: 0.05  # 已有
+  require_volume_confirm: true   # 新：是否要求放量确认
+  volume_multiplier: 1.5         # 新：放量倍数（>20期均量）
+  min_pattern_bars: 10           # 新：最小形态跨度（避免太近的假形态）
 
 confirmation:
   require_volume: false          # 高波动时量有时不可靠，放松

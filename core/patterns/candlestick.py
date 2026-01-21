@@ -20,156 +20,180 @@ def _calculate_basic_elements(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def detect_candlestick_patterns(df: pd.DataFrame, config: dict) -> pd.DataFrame:
-    """
-    主函数：检测所有蜡烛图形态
-    config: 从 yaml 加载的 candlestick 部分
-    """
-    cfg = config['candlestick']
+    df = df.copy()
     df = _calculate_basic_elements(df)
     
-    # ==================== 单根K线形态 ====================
+    cfg = config['candlestick']
     
-    # 长影线判断
-    long_lower_shadow = df['lower_shadow'] >= df['body'] * cfg['long_shadow_ratio']
-    long_upper_shadow = df['upper_shadow'] >= df['body'] * cfg['long_shadow_ratio']
+    long_shadow = cfg['long_shadow_ratio']  # ≥2倍实体
+    small_body = cfg['small_body_ratio']     # <30%范围
+    doji_body = cfg['doji_ratio']            # ≤5%范围
+    very_small = cfg['very_small_body_ratio']  # 用于晨星/昏星中间
     
-    # 小实体
-    small_body = df['body_ratio'] <= cfg['small_body_ratio']
-    very_small_body = df['body_ratio'] <= cfg['very_small_body_ratio']
+    # 初始化哈拉米列（防止缺失）
+    df['bullish_harami'] = 0
+    df['bearish_harami'] = 0
+    df['bullish_harami_cross'] = 0
+    df['bearish_harami_cross'] = 0
     
-    # 十字星（包括变体）
-    doji = df['body_ratio'] <= cfg['doji_ratio']
+    # 单根K线形态
+    # Doji 系列
+    df['doji'] = (df['body_ratio'] <= doji_body).astype(int)
+    df['dragonfly_doji'] = df['doji'] & (df['lower_shadow'] >= df['body'] * long_shadow) & (df['upper_shadow'] <= df['body'] * 0.1)
+    df['gravestone_doji'] = df['doji'] & (df['upper_shadow'] >= df['body'] * long_shadow) & (df['lower_shadow'] <= df['body'] * 0.1)
+    df['long_legged_doji'] = df['doji'] & (df['upper_shadow'] >= df['body'] * long_shadow) & (df['lower_shadow'] >= df['body'] * long_shadow)
     
-    # 锤头线（Hammer）：下影长 + 上影短 + 小实体（通常在下跌趋势，但这里先检测形态）
-    hammer_condition = (
-        long_lower_shadow &
+    # Spinning Top
+    df['spinning_top'] = (df['body_ratio'] <= small_body) & (df['upper_shadow'] >= df['body'] * long_shadow) & (df['lower_shadow'] >= df['body'] * long_shadow)
+    
+    # Hammer / Shooting Star 系列
+    df['hammer'] = (
+        (df['lower_shadow'] >= df['body'] * long_shadow) &
         (df['upper_shadow'] <= df['body'] * cfg['hammer_upper_shadow_ratio']) &
-        small_body
+        (df['body_ratio'] <= small_body)
     )
-    df['hammer'] = hammer_condition.astype(int)
-    
-    # 上吊线（Hanging Man）：结构同锤头，但通常在上涨趋势（后续信号层判断趋势）
-    df['hanging_man'] = hammer_condition.astype(int)  # 结构相同，后续区分趋势
-    
-    # 倒锤头/射击之星（Inverted Hammer / Shooting Star）
-    inverted_hammer_condition = (
-        long_upper_shadow &
+    df['inverted_hammer'] = (
+        (df['upper_shadow'] >= df['body'] * long_shadow) &
         (df['lower_shadow'] <= df['body'] * cfg['shooting_star_lower_shadow_ratio']) &
-        small_body
+        (df['body_ratio'] <= small_body)
     )
-    df['inverted_hammer'] = inverted_hammer_condition.astype(int)  # 看涨变体
-    df['shooting_star'] = inverted_hammer_condition.astype(int)  # 看跌变体，后续区分
+    df['shooting_star'] = df['inverted_hammer']  # 逻辑相同，但上下文不同
     
-    # 纺锤线（Spinning Top）：小实体 + 长上下影线
-    spinning_top = small_body & long_lower_shadow & long_upper_shadow
-    df['spinning_top'] = spinning_top.astype(int)
+    # 双根形态
+    prev = df.shift(1)
     
-    # 十字星变体
-    df['doji'] = doji.astype(int)
-    df['dragonfly_doji'] = doji & long_lower_shadow  # 蜻蜓十字（潜在看涨）
-    df['gravestone_doji'] = doji & long_upper_shadow  # 墓碑十字（潜在看跌）
-    df['long_legged_doji'] = doji & long_lower_shadow & long_upper_shadow
+    # 吞没（Engulfing）
+    engulfing_bull = (
+        prev['is_bearish'] & df['is_bullish'] &
+        (df['open'] < prev['close']) & (df['close'] > prev['open'])
+    )
+    if cfg.get('engulfing_strict', True):
+        engulfing_bull &= (df['open'] <= prev['low']) & (df['close'] >= prev['high'])  # 完全包住影线
+    df['bullish_engulfing'] = engulfing_bull.astype(int)
     
-    # ==================== 2-3根组合反转形态 ====================
+    engulfing_bear = (
+        prev['is_bullish'] & df['is_bearish'] &
+        (df['open'] > prev['close']) & (df['close'] < prev['open'])
+    )
+    if cfg.get('engulfing_strict', True):
+        engulfing_bear &= (df['open'] >= prev['high']) & (df['close'] <= prev['low'])
+    df['bearish_engulfing'] = engulfing_bear.astype(int)
     
-    # 辅助：前一根、前两根
-    prev1 = df.shift(1)
+    # 刺穿 / 乌云
+    df['piercing'] = (
+        prev['is_bearish'] & df['is_bullish'] &
+        (df['open'] < prev['low']) & (df['close'] > prev['body'].abs() / 2 + np.minimum(prev['open'], prev['close']))
+    ).astype(int)
+    
+    df['dark_cloud_cover'] = (
+        prev['is_bullish'] & df['is_bearish'] &
+        (df['open'] > prev['high']) & (df['close'] < prev['body'].abs() / 2 + np.minimum(prev['open'], prev['close']))
+    ).astype(int)
+    
+    # 三根形态
     prev2 = df.shift(2)
     
-    # 1. 吞没形态（Engulfing）
-    bullish_engulfing = (
-        prev1['is_bearish'] & df['is_bullish'] &  # 前阴后阳
-        (df['open'] < prev1['close']) &
-        (df['close'] > prev1['open']) &
-        (df['body'] > prev1['body'] if cfg['engulfing_strict'] else True)  # 可选严格完全包住
-    )
-    bearish_engulfing = (
-        prev1['is_bullish'] & df['is_bearish'] &
-        (df['open'] > prev1['close']) &
-        (df['close'] < prev1['open']) &
-        (df['body'] > prev1['body'] if cfg['engulfing_strict'] else True)
-    )
-    df['bullish_engulfing'] = bullish_engulfing.astype(int)
-    df['bearish_engulfing'] = bearish_engulfing.astype(int)
-    
-    # 2. 刺穿形态（Piercing） / 乌云盖顶（Dark Cloud Cover）
-    piercing = (
-        prev1['is_bearish'] & df['is_bullish'] &
-        (df['open'] < prev1['low']) &  # 跳空低开（加密可放宽）
-        (df['close'] > prev1['open'] + (prev1['close'] - prev1['open']) * cfg['piercing_ratio'])
-    )
-    dark_cloud = (
-        prev1['is_bullish'] & df['is_bearish'] &
-        (df['open'] > prev1['high']) &
-        (df['close'] < prev1['open'] - (prev1['open'] - prev1['close']) * cfg['piercing_ratio'])
-    )
-    df['piercing'] = piercing.astype(int)
-    df['dark_cloud_cover'] = dark_cloud.astype(int)
-    
-    # 3. 晨星（Morning Star） / 昏星（Evening Star）
+    # 晨星 / 昏星
     morning_star = (
-        prev2['is_bearish'] &                                 # 第一根长阴
-        very_small_body.shift(1) &                           # 中间小实体/十字
-        df['is_bullish'] &                                   # 第三根阳
-        (df['close'] > prev2['open'] + prev2['body'] * 0.5)   # 第三根深入第一根实体一半以上
-    )
-    evening_star = (
-        prev2['is_bullish'] &
-        very_small_body.shift(1) &
-        df['is_bearish'] &
-        (df['close'] < prev2['open'] - prev2['body'] * 0.5)
+        prev2['is_bearish'] & 
+        (prev['body_ratio'] <= very_small) & 
+        df['is_bullish'] &
+        (df['close'] > prev2['body'].abs() / 2 + np.minimum(prev2['open'], prev2['close']))
     )
     df['morning_star'] = morning_star.astype(int)
+    
+    evening_star = (
+        prev2['is_bullish'] & 
+        (prev['body_ratio'] <= very_small) & 
+        df['is_bearish'] &
+        (df['close'] < prev2['body'].abs() / 2 + np.minimum(prev2['open'], prev2['close']))
+    )
     df['evening_star'] = evening_star.astype(int)
     
-    # 4. 三白兵（Three White Soldiers） / 三黑鸦（Three Black Crows）
-    three_soldiers = (
-        df['is_bullish'] &
-        prev1['is_bullish'] &
-        prev2['is_bullish'] &
-        (df['close'] > prev1['close']) &
-        (prev1['close'] > prev2['close']) &
-        (df['open'] > prev1['open']) &   # 逐步高于前开盘
-        (prev1['open'] > prev2['open'])
-    )
-    three_crows = (
-        df['is_bearish'] &
-        prev1['is_bearish'] &
-        prev2['is_bearish'] &
-        (df['close'] < prev1['close']) &
-        (prev1['close'] < prev2['close']) &
-        (df['open'] < prev1['open']) &
-        (prev1['open'] < prev2['open'])
-    )
-    df['three_white_soldiers'] = three_soldiers.astype(int)
-    df['three_black_crows'] = three_crows.astype(int)
+    # 三白兵 / 三黑乌
+    three_up = (df['is_bullish'] & prev['is_bullish'] & prev2['is_bullish'] &
+                (df['close'] > prev['close']) & (prev['close'] > prev2['close']))
+    df['three_white_soldiers'] = three_up.astype(int)
     
-    # ==================== 持续形态（Continuation） ====================
+    three_down = (df['is_bearish'] & prev['is_bearish'] & prev2['is_bearish'] &
+                  (df['close'] < prev['close']) & (prev['close'] < prev2['close']))
+    df['three_black_crows'] = three_down.astype(int)
     
-    # 上升分离线（Upward Separation Lines）：大阳后大阴开盘高于前收盘（看涨持续）
+    # 分离线与跳空
     upward_separation = (
-        prev1['is_bullish'] & df['is_bearish'] &
-        (df['open'] > prev1['close']) &
-        (df['body'] > prev1['body'] * 0.8)  # 力度类似
+        prev['is_bearish'] & df['is_bullish'] &
+        (df['open'] > prev['close']) &
+        (df['body'] > prev['body'] * 0.8)
     )
     df['upward_separation'] = upward_separation.astype(int)
     
-    # 下降分离线（Downward）：反之，看跌持续
     downward_separation = (
-        prev1['is_bearish'] & df['is_bullish'] &
-        (df['open'] < prev1['close']) &
-        (df['body'] > prev1['body'] * 0.8)
+        prev['is_bullish'] & df['is_bearish'] &
+        (df['open'] < prev['close']) &
+        (df['body'] > prev['body'] * 0.8)
     )
     df['downward_separation'] = downward_separation.astype(int)
     
-    # 跳空窗口（Gap）：加密少见，但可检测
-    gap_up = df['low'] > prev1['high']
-    gap_down = df['high'] < prev1['low']
-    df['gap_up'] = gap_up.astype(int)  # 潜在支撑
-    df['gap_down'] = gap_down.astype(int)  # 潜在阻力
+    df['gap_up'] = (df['low'] > prev['high']).astype(int)
+    df['gap_down'] = (df['high'] < prev['low']).astype(int)
     
-    # 注意：持续形态常在趋势中途加仓（信号层用）
+    # === 新增：哈拉米形态 ===
+    prev_open = prev['open']
+    prev_close = prev['close']
+    prev_body = np.abs(prev_close - prev_open)
+    
+    small_ratio = cfg.get('harami_small_body_ratio', 0.5)
+    cross_doji_ratio = cfg.get('harami_cross_doji_ratio', cfg['doji_ratio'])  # 复用doji阈值
+    
+    # 哈拉米基础条件
+    harami_body_cond = (df['body'] <= prev_body * small_ratio) & \
+                       (df['open'] >= np.minimum(prev_open, prev_close)) & \
+                       (df['close'] <= np.maximum(prev_open, prev_close))
+    
+    harami_cross_cond = harami_body_cond & (df['body_ratio'] <= cross_doji_ratio)
+    
+    # 看涨哈拉米（前阴后阳）
+    bullish_harami_cond = harami_body_cond & prev['is_bearish'] & df['is_bullish']
+    df['bullish_harami'] = bullish_harami_cond.astype(int)
+    
+    df['bullish_harami_cross'] = (harami_cross_cond & bullish_harami_cond).astype(int)
+    
+    # 看跌哈拉米（前阳后阴）
+    bearish_harami_cond = harami_body_cond & prev['is_bullish'] & df['is_bearish']
+    df['bearish_harami'] = bearish_harami_cond.astype(int)
+    
+    df['bearish_harami_cross'] = (harami_cross_cond & bearish_harami_cond).astype(int)
 
+        # === 新增：三法形态（持续形态）===
+    cfg_three = cfg.get('three_methods_small_ratio', 0.5)
+    large_ratio = cfg.get('three_methods_large_ratio', 1.0)
+    
+    # 移位4根前数据（需要5根K线）
+    prev1 = df.shift(1)
+    prev2 = df.shift(2)
+    prev3 = df.shift(3)
+    prev4 = df.shift(4)
+    
+    # 上升三法（多头持续）
+    rising_three = (
+        prev4['is_bullish'] & (prev4['body'] > 0) &  # 第一根大阳
+        prev3['is_bearish'] & (prev3['body'] <= prev4['body'] * cfg_three) &  # 小阴
+        prev2['is_bearish'] & (prev2['body'] <= prev4['body'] * cfg_three) &
+        prev1['is_bearish'] & (prev1['body'] <= prev4['body'] * cfg_three) &
+        df['is_bullish'] & (df['body'] >= prev4['body'] * large_ratio) &  # 第五根大阳突破
+        (df['close'] > prev4['close'])  # 收盘新高
+    )
+    df['rising_three_methods'] = rising_three.astype(int)
+    
+    # 下降三法（空头持续）
+    falling_three = (
+        prev4['is_bearish'] & (prev4['body'] > 0) &
+        prev3['is_bullish'] & (prev3['body'] <= prev4['body'] * cfg_three) &
+        prev2['is_bullish'] & (prev2['body'] <= prev4['body'] * cfg_three) &
+        prev1['is_bullish'] & (prev1['body'] <= prev4['body'] * cfg_three) &
+        df['is_bearish'] & (df['body'] >= prev4['body'] * large_ratio) &
+        (df['close'] < prev4['close'])
+    )
+    df['falling_three_methods'] = falling_three.astype(int)
+    
     return df
-
-# 可选：后期在信号层添加成交量/趋势确认

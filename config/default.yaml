@@ -7,6 +7,10 @@ candlestick:
   small_body_ratio: 0.3           # 小实体：实体 < 价格区间(at_range)的 30%
   doji_ratio: 0.05                # 十字星：|open-close| ≤ 价格区间 5%
   very_small_body_ratio: 0.1      # 极小实体（用于晨星/昏星中间K线）
+  harami_small_body_ratio: 0.5    # 后一根实体 ≤ 前一根实体的50%（经典较宽松）
+  harami_cross_doji_ratio: 0.1    # 十字哈拉米用doji阈值
+  three_methods_small_ratio: 0.5   # 中间三根实体 ≤ 第一根的50%
+  three_methods_large_ratio: 1.0   # 最后一根实体 ≥ 第一根
   
   # 单根K线额外容忍
   hammer_upper_shadow_ratio: 0.1  # 锤头/上吊 上影线要短（≤实体*0.1）
@@ -53,6 +57,21 @@ indicators:
     smooth_d: 3
     overbought: 80
     oversold: 20
+  divergence:
+    enabled: true
+    lookback: 50          # 回看周期（找最近两个极值点）
+    extrema_order: 10     # argrelextrema 的 order（小=更敏感）
+    price_tolerance: 0.01 # 价格新高/新低容忍（1%）
+    indicator_tolerance: 0.02  # 指标背离容忍
+  atr:
+    period: 14             # ATR周期，经典14
+
+  obv_divergence:
+    enabled: true
+    lookback: 60           # 回看周期
+    extrema_order: 12      # 极值敏感度
+    price_tolerance: 0.01  # 价格新高/低容忍1%
+    obv_tolerance: 0.02    # OBV背离容忍2%
 
 volume:
   obv_confirmation: true         # 量价同向要求
@@ -70,15 +89,21 @@ confirmation:
 risk:
   max_risk_per_trade: 0.02       # 单笔最大风险 2%
   stop_loss_atr_multiplier: 2.0  # 止损距离（ATR倍数，后续实现）
-
-chart_patterns:
-  peak_trough_tolerance: 0.05
-  extrema_order: 5  # 1m用30-50
+  take_profit_rr: 2.0            # 新：止盈倍数（2倍风险，即盈亏比2:1）
+  use_atr_stop: true             # 新：启用ATR止损
 
 fibonacci:
   levels: [0.236, 0.382, 0.5, 0.618, 0.786]
   swing_lookback: 100
 
-# chart_patterns:
-#   extrema_order: 10  # 1m数据推荐10-20（小=更多形态检测，更敏感）
-#   peak_trough_tolerance: 0.05  # 已有的保持
+chart_patterns:
+  extrema_order: 50             # 1m用50+，更高周期用30
+  peak_trough_tolerance: 0.08
+  require_volume_confirm: true
+  volume_multiplier: 1.5
+  min_pattern_bars: 30          # 头肩跨度更大
+  shoulder_tolerance: 0.10      # 新：肩部高度容忍10%
+
+support_resistance:
+  touch_tolerance_pct: 0.005     # 0.5% 价格容忍算触碰
+  min_touches_for_strong: 3      # ≥3次算强（可选，后续信号用）

@@ -42,7 +42,8 @@ print("最终列名：", df.columns.tolist())
 config = load_config('default.yaml')  # 或 volatile.yaml 测试高波动
 df_enhanced = enhance_dataframe(df, config)
 
-performance, df_backtest = backtest_strategy(df_enhanced, initial_capital=100000, risk_per_trade=0.02)
+df_enhanced = df_enhanced.sort_index()  # <--- 关键：按时间升序（旧→新）
+performance, df_backtest = backtest_strategy(df_enhanced, initial_capital=100000, config=config)
 
 print("\n回测绩效：")
 for k, v in performance.items():
