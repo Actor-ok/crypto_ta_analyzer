@@ -1,3 +1,9 @@
+# 总体目标：检测四类跳空（突破、持续、耗尽、普通），并分类上下方向。
+# 输入：OHLCV + config.gaps
+# 输出：gap_up/down、gap_type（breakaway_up等）、gap_size_pct
+# 关键代码块：比较low>前high或high<前low检测跳空 → 用EMA趋势 + 近期高低点判断类型。
+# 关联：强趋势确认信号。
+
 import pandas as pd
 import numpy as np
 

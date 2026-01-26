@@ -1,3 +1,7 @@
+# 目标：检测OBV背离（逻辑几乎和divergence.py相同，只是换成obv）。
+# 输出：obv_bullish_div、obv_bearish_div
+# 备注：建议后续合并到divergence.py统一处理。
+
 import pandas as pd
 import numpy as np
 from scipy.signal import argrelextrema

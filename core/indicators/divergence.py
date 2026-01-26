@@ -1,3 +1,9 @@
+# 总体目标：检测RSI和MACD的看涨/看跌背离（隐藏背离也部分支持）。
+# 输入：已有rsi/macd的DataFrame + config.divergence
+# 输出：rsi_bullish_div、rsi_bearish_div、macd_bullish_div、macd_bearish_div（从检测点起持续标记1）
+# 关键代码块：使用argrelextrema找极值点 → 比较最近两个极值点的价格 vs 指标值差异。
+# 关联：信号生成时作为反转确认。
+
 import pandas as pd
 import numpy as np
 from scipy.signal import argrelextrema

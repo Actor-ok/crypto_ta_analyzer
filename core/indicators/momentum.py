@@ -1,3 +1,9 @@
+# 总体目标：计算动量指标（RSI、Stochastic）。
+# 输入：OHLCV + config
+# 输出：rsi、stoch_k、stoch_d
+# 关键代码块：RSIIndicator + StochasticOscillator。
+# 关联：用于超买超卖判断和背离检测。
+
 from ta.momentum import RSIIndicator, StochasticOscillator
 import pandas as pd
 

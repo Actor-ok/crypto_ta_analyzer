@@ -1,3 +1,9 @@
+# 总体目标：简化版艾略特5浪结构识别（主要标记wave_1~5和是否确认）。
+# 输入：OHLCV + config.elliott
+# 输出：wave_label、wave_confirmed
+# 关键代码块：找转折点 → 交替标记高低点 → 检查3浪最长规则。
+# 关联：signal_generator里用于捕捉主升浪（wave_3）。
+
 import pandas as pd
 from scipy.signal import argrelextrema
 import numpy as np

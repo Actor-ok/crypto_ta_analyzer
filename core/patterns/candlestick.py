@@ -1,3 +1,13 @@
+# 总体目标：实现30+种经典蜡烛图形态检测（严格遵循《日本蜡烛图技术》尼森标准），包括单根（锤头/吊人）、双根（吞没/哈拉米）、三根（晨星/昏星/三兵）、以及新增的持续形态（分离线、并列白线等）。
+# 输入：已有基础列的DataFrame + config.candlestick参数
+# 输出：新增几十列布尔型形态标记（如hammer=1、bullish_engulfing=1）
+# 关键代码块：
+
+# _calculate_basic_elements：先计算实体、影线、阳阴等基础元素（所有形态共用）
+# 随后逐个实现每种形态的条件判断（使用shift(1)/shift(2)访问前几根K线）
+# 阈值全部来自config（long_shadow_ratio、doji_ratio等）
+# 关联：被dataframe_enhancer调用，是信号生成的重要输入源。
+
 import pandas as pd
 import numpy as np
 

@@ -1,3 +1,8 @@
+# 总体目标：高级K线绘图（mplfinance），带信号标注、布林、EMA、RSI、MACD多面板。
+# 输入：增强DataFrame + 参数
+# 输出：交互式图表（plt.show()）
+# 关键代码块：make_addplot叠加各种线/柱状图 + 信号箭头标注。
+
 import mplfinance as mpf
 import matplotlib.pyplot as plt
 import pandas as pd

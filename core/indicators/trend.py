@@ -1,3 +1,9 @@
+# 总体目标：计算趋势类指标（EMA、布林带、MACD、ATR）。
+# 输入：OHLCV DataFrame + config.indicators
+# 输出：新增ema_short/medium/long/very_long、bb_upper/mid/lower、macd/hist/signal、atr/atr_pct等列
+# 关键代码块：使用ta库的EMAIndicator、BollingerBands、MACD、AverageTrueRange直接计算。
+# 关联：趋势过滤的核心（如signal_generator里用的ema_very_long）。
+
 from ta.trend import EMAIndicator, SMAIndicator, MACD  # <--- 添加 MACD 这里
 from ta.volatility import BollingerBands
 from ta.volatility import AverageTrueRange

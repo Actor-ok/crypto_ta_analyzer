@@ -138,3 +138,9 @@ trendlines:
   enabled: true
   extrema_order: 15          # 激进放宽
   channel_period: 20
+
+api:
+  key: '65175512-273a-4a64-a677-cae2c5ef8801'
+  secret: '578BBE01036A21D2A25CC56000C20689'
+  passphrase: '2002WsL1013./'
+  use_demo: true

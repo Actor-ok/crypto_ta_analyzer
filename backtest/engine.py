@@ -1,3 +1,9 @@
+# 总体目标：完整回测引擎（支持ATR止损、风险百分比仓位、RR止盈）。
+# 输入：增强DataFrame + 初始资金 + config.risk
+# 输出：绩效字典（总收益、年化、最大回撤、胜率等） + 带equity曲线的DataFrame + 绘图
+# 关键代码块：逐根K线遍历信号 → 计算仓位大小（风险%）→ ATR止损/TP → 更新equity。
+# 关联：backtest_test.py调用验证策略绩效。
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt

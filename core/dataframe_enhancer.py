@@ -1,3 +1,12 @@
+# 总体目标：项目的“总装配线”。接收原始K线DataFrame，依次调用所有指标、形态检测、信号生成模块，输出一个超级增强的DataFrame（包含几百列指标、形态标记、最终交易信号）。这是几乎所有测试脚本、回测、GUI、实时交易的入口点。
+# 输入：原始OHLCV DataFrame + config字典
+# 输出：增强后的DataFrame（新增数百列）
+# 关键代码块：
+
+# 按严格顺序调用各个模块（趋势→动量→量价→蜡烛形态→跳空→波浪→图表形态→趋势线→支撑阻力→斐波那契→背离→OBV背离→信号生成）
+# 特别强调了跳空检测的打印确认（debug用）
+# 与其他模块关联：它是所有子模块的“调度中心”，任何新指标/形态都要在这里注册调用。
+
 import pandas as pd
 from core.patterns.candlestick import detect_candlestick_patterns
 from core.indicators import add_moving_averages, add_momentum_indicators, add_volume_indicators

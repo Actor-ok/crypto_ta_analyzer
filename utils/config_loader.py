@@ -1,3 +1,6 @@
+# 目标：统一加载config/*.yaml文件（路径相对utils）。
+# 输出：dict结构config。
+
 import yaml
 import os
 

@@ -1,3 +1,9 @@
+# 总体目标：自动绘制趋势线、唐奇安通道，检测突破。
+# 输入：OHLCV + config.trendlines
+# 输出：upper/lower_trendline、donchian_upper/lower、trendline_break_up/down、channel_width_pct
+# 关键代码块：最近高/低点线性回归拟合趋势线 + rolling max/min唐奇安。
+# 关联：趋势突破信号。
+
 import pandas as pd
 import numpy as np
 from scipy.signal import argrelextrema

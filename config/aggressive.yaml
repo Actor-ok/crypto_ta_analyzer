@@ -1,91 +1,195 @@
-# aggressive.yaml：激进版（放宽所有过滤，最大化交易次数和牛市捕获）
+# aggressive_v3_balanced.yaml
+# 折中版：保持激进触发逻辑的同时在资金管理层进行折中调整（max_risk_per_trade = 0.02）
+# 目的：在维持较高交易机会的同时提高回测到实盘的可迁移性（更稳健的回撤与成本敏感性）。
 
 candlestick:
-  long_shadow_ratio: 1.5          # 放宽长影线（更容易锤头/射击之星）
-  small_body_ratio: 0.4           # 放宽小实体
-  doji_ratio: 0.1                 # 放宽十字星
-  very_small_body_ratio: 0.2      # 放宽极小实体（晨星/昏星）
-  harami_small_body_ratio: 0.7    # 放宽哈拉米
-  harami_cross_doji_ratio: 0.2
-  three_body_ratio: 0.6           # 放宽三法
-  large_ratio: 1.2                # 放宽大实体
-  engulfing_body_ratio: 1.0       # 吞没放宽
-  piercing_ratio: 0.5             # 刺穿放宽
-  hammer_upper_shadow_ratio: 0.1  # <--- 关键补全（锤头上影线比例）
-  hammer_lower_shadow_ratio: 2.0
-  shooting_star_lower_shadow_ratio: 0.1
+  # 这些参数在 signals/signal_generator.py 的蜡烛形态检测模块使用，用于识别反转/延续形态
+  # 取值考虑：比 aggressive_v2 稍放松以保留高频机会，但比原始 aggressive 更稳健以减少极端噪音
+  long_shadow_ratio: 1.3          # 判断“长影线”的影线长度比率（影线 / 实体），用于 hammer/dragonfly 等。值越大越严格。
+  small_body_ratio: 0.5          # 实体/真实范围比率判定“小实体”，用于 doji/harami 判定
+  doji_ratio: 0.15                # doji 的实体与整体蜡烛大小比阈值；较低值更严格（避免虚假十字）
+  very_small_body_ratio: 0.15     # 用于晨星/昏星中“极小实体”判定
+  harami_small_body_ratio: 0.6   # Harami 中小实体与前一根实体比例阈值
+  harami_cross_doji_ratio: 0.18   # Harami-cross 的十字判定阈值
+  three_body_ratio: 0.6           # 三子形态（如三白兵/三黑乌鸦）中实体比相似度阈值
+  large_ratio: 1.2                # 定义“大实体”的最低倍数
+  engulfing_body_ratio: 1.0       # 吞没形态中新实体必须至少是前一实体的倍数
+  piercing_ratio: 0.5             # 刺穿线中阳线覆盖阴线的比例阈值
+  hammer_upper_shadow_ratio: 0.4 # 锤头上影线占比阈值（上影短）
+  hammer_lower_shadow_ratio: 2.0  # 锤头下影线至少是实体的倍数（下影长）
+  shooting_star_lower_shadow_ratio: 0.12
   shooting_star_upper_shadow_ratio: 2.0
-  gap_ratio: 0.001                # 极宽跳空
-  similar_body_ratio: 0.7
+  gap_ratio: 0.001                # 跳空的最小相对幅度（用于 gaps.detect_gaps），非常小以捕获微跳空
+  similar_body_ratio: 0.7         # 用于识别“相似实体”群体（例如 side_by_side_white_lines）
 
 indicators:
+  # 这些是技术指标计算参数（在 indicators/*.py 中使用）
   ema:
     short: 20
     medium: 50
     long: 100
-    very_long: 200
+    very_long: 50                 # EMA200 作为长期趋势基准（trend filter 使用）
   rsi:
-    period: 14
-    overbought: 80               # 大幅放宽（少卖出）
-    oversold: 20                 # 大幅放宽（多买入）
+    period: 10
+    overbought: 75                 # 软过滤阈值：高于此值降低新开多头权重（不是绝对拒绝）
+    oversold: 25                   # 低于此值降低新开空头权重
   macd:
     fast: 12
     slow: 26
     signal: 9
   atr:
-    period: 14
+    period: 14                     # 用于止损距离（ATR-stop）与头寸规模的波动率调整
   bollinger:
     period: 20
-    std_dev: 2                   # 标准2倍
+    std_dev: 2
   stochastic:
     period: 14
     smooth_k: 3
   cmf:
-    period: 20
+    period: 20                     # Chaikin Money Flow 用于量价流向确认（support factor）
   volume_osc:
-    short: 5
-    long: 10
+    short: 3
+    long: 8
+  vwap:
+    enabled: true                  # 用于“close_above_vwap”支持因子（表征机构资金）
 
 confirmation:
-  require_volume: false          # 完全取消放量
-  require_rsi_no_extreme: false  # 取消RSI过滤
+  # 确认层：决定一个信号是否最终被接受并下单
+  # signals/signal_generator.py 会读取这些规则来执行“分级确认逻辑”。
+  confirmation_rules:
+    require_trend_confirmation: true
+    trend_confirmation_mode: "dual_ema"   # 模式：dual_ema -> 要求 EMA(short) > EMA(very_long) 且 close > EMA(very_long)
+    primary_factors:
+      - candlestick_reversal
+      - chart_pattern_breakout
+      - divergence
+      - trendline_breakout
+      - gap_breakaway
+    support_factors:
+      - volume_positive
+      - close_above_vwap
+      - ema_short_above_medium
+  require_volume: false                # 将量价作为支持因子（避免在极低流动性时下单）
+  require_rsi_no_extreme: false        # RSI 作为软过滤：极端 RSI 会降低支持因子权重，但不完全阻止开仓
+
+  thresholds:
+    cmf_threshold: 0.005              # CMF > 0.005 视为轻微资金净流入（用作支持因子）
+    volume_osc_zscore_threshold: 0.5  # 短期 volume_osc 的 z-score 阈值（量增确认）
+    min_avg_volume: 100               # 最小平均成交量阈（单位按你数据的 volume 字段定义）—用于避免流动性陷阱
 
 risk:
-  max_risk_per_trade: 0.03       # 更大仓位
-  stop_loss_atr_multiplier: 3.5  # 更松止损（少被打出）
-  take_profit_rr: 4.0            # 更大止盈
+  # 资金管理与止损策略（在 position_sizer / risk_manager 中使用）
+  max_risk_per_trade: 0.015           # 单笔风险：2% 账户（折中值），关键：直接影响仓位大小（见下理由）
+  stop_loss_atr_multiplier: 2.5      # 初始止损 = entry_price - (ATR * multiplier)（对多头为下方），较合理的松紧平衡
+  take_profit_rr: 3.5                # 目标 RR（期望较高的盈亏比）
   use_atr_stop: true
+  trailing_stop:
+    enabled: true
+    trailing_atr_multiplier: 2.0     # 移动止损使用 ATR*2.0 作为追踪宽度
 
 chart_patterns:
-  extrema_order: 15              # 大幅放宽（更多转折检测）
-  peak_trough_tolerance: 0.12
+  # 形态检测参数（chart_pattern_detector.py / pattern modules）
+  extrema_order: 12                  # 转折点检测窗口（较大值增加对短期噪声的抵抗）
+  peak_trough_tolerance: 0.1
   require_volume_confirm: false
   volume_multiplier: 1.0
-  min_pattern_bars: 15
+  min_pattern_bars: 5
   shoulder_tolerance: 0.20
   triangle:
-    extrema_order: 15
+    extrema_order: 20
     min_touches: 2
 
 gaps:
   enabled: true
-  min_gap_pct: 0.0005            # 极小跳空都捕获
-  volume_multiplier: 1.0
-  trend_period: 30               # 缩短趋势判断
+  min_gap_pct: 0.0001                # 捕获极小跳空（但 require_volume 可阻止无量噪声）
+  volume_multiplier: 1.1
+  trend_period: 30                   # 计算局部趋势长度，用于判断 gap 的方向相对长期趋势
 
 fibonacci:
   levels: [0.236, 0.382, 0.5, 0.618, 0.786]
-  swing_lookback: 80             # 缩短回看
+  swing_lookback: 80                 # 回看范围用于识别波段高低点
 
 support_resistance:
-  touch_tolerance_pct: 0.015     # 放宽触碰
+  touch_tolerance_pct: 0.015         # 支撑阻力“触碰”容差（越大越容易认定触碰）
   min_touches_for_strong: 2
 
 elliott:
   enabled: true
-  order: 15
+  order: 15                          # 波浪识别的复杂度/深度（仅作辅助信号）
 
 trendlines:
   enabled: true
-  extrema_order: 15          # 激进放宽
+  extrema_order: 15
   channel_period: 20
+
+execution:
+  # 执行模型 & 成本建模（用于回测真实建仓/滑点/费率影响）
+  fee:
+    taker_pct: 0.0006                # 假定 taker 费率（示例，回测时请替换为真实平台费率）
+    maker_pct: 0.0002
+  slippage:
+    per_order_pct: 0.0005            # 每单假定滑点基线（0.05%），在 stress 场景会放大
+    model: "proportional"            # 滑点模型（proportional 表示按百分比模拟）
+  order_sizing:
+    position_sizing_method: "atr_percent"  # 用 ATR + 风险% 计算头寸（在 position_sizer 中实现）
+    risk_percent: 0.02              # 与 risk.max_risk_per_trade 保持一致（冗余备份）
+    max_position_percent: 0.2       # 单次最大仓位不超过账户 20%（避免过度单票暴露）
+  max_concurrent_trades: 3
+  max_daily_trades: 30
+  min_fill_volume_ratio: 0.005      # 若下单量超过日均量的 0.5% 则拒单（保护流动性）
+
+backtest:
+  # 自动化回测/验证选项（回测框架会读取）
+  walk_forward:
+    enabled: true
+    optimization_window_months: 12
+    test_window_months: 3
+  monte_carlo:
+    enabled: true
+    iterations: 500
+  cost_scenarios:
+    - name: "base"
+      slippage_multiplier: 1.0
+      fee_multiplier: 1.0
+    - name: "stress"
+      slippage_multiplier: 2.0
+      fee_multiplier: 1.5
+
+monitoring:
+  # 实盘/纸面阶段监控阈值，达到阈值后触发警告或自动降级
+  rolling_performance_window_days: 90
+  pause_rules:
+    - metric: "drawdown_since_peak_pct"
+      threshold: 0.20                # 回撤 20% 自动进入限制模式
+    - metric: "rolling_return_90d"
+      threshold: -0.05               # 90 天回报 -5% → 警报
+    - metric: "slippage_mean"
+      threshold: 0.002               # 平均滑点 > 0.2% → 警报并人工检查
+
+logging:
+  # 回测/实盘需要记录的日志字段（方便事后分析）
+  fields:
+    - timestamp
+    - timeframe
+    - symbol
+    - entry_price
+    - entry_size
+    - stop_price
+    - take_profit
+    - exit_price
+    - entry_factors
+    - support_factors
+    - slippage_estimate
+    - realized_pnl
+    - account_balance
+
+meta:
+  version: "aggressive_v3_balanced_2026-01-22"
+  notes: "折中版：max_risk_per_trade=0.02。保留激进触发逻辑并增强资金/执行稳健性。"
+
+
+api:
+  key: '65175512-273a-4a64-a677-cae2c5ef8801'
+  secret: '578BBE01036A21D2A25CC56000C20689'
+  passphrase: '2002WsL1013./'
+  use_demo: true

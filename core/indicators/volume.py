@@ -1,3 +1,9 @@
+# 总体目标：计算量价指标（OBV、CMF、Volume Oscillator、VWAP）。
+# 输入：OHLCV + config
+# 输出：obv、cmf、volume_osc、vwap
+# 关键代码块：OnBalanceVolumeIndicator、ChaikinMoneyFlowIndicator、自研Volume Osc、VWAP。
+# 关联：signal_generator里用于量价确认（cmf>0、volume_osc>0、close>vwap）。
+
 import pandas as pd
 from ta.volume import OnBalanceVolumeIndicator, ChaikinMoneyFlowIndicator, VolumeWeightedAveragePrice
 

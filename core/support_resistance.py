@@ -1,3 +1,9 @@
+# 总体目标：动态斐波那契回撤 + 支撑阻力位（基于转折点）+ 强度统计（触碰次数）。
+# 输入：OHLCV + config
+# 输出：fib_23.6/38.2/50/61.8、support_13、resistance_13、对应_strength列
+# 关键代码块：rolling max/min找swing高低 → 计算斐波水平 → 历史触碰计数。
+# 关联：价格接近支撑时的多头加分。
+
 import pandas as pd
 import numpy as np                  # 顶部必须有
 from scipy.signal import argrelextrema   # 必须有（用于 add_support_resistance_levels）
